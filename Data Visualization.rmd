@@ -1,6 +1,6 @@
 ---
 title: "MAT 4376 Project Four"
-author: "Catherine Samson and Hanan Ather"
+author: "Hanan Ather and Catherine Samson"
 date: "26/10/2019"
 output: 
   html_document:

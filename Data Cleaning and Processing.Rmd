@@ -1,0 +1,805 @@
+---
+title: "MAT4376 Project Three"
+author: "Catherine Samson and Hanan Ather"
+date: "23/10/2019"
+output: 
+  html_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Global Cities PBI
+
+## Introduction 
+
+The first dataset which will be examined is the Global Cities PBI dataset. This data comes from the Globalization and World Cities Research Network which is an organization which studies globalization and the relationship it has with cities accross the world (GaWC, 2019).
+
+The first step is to bring in all required libraries.
+```{r}
+# Bringing in libraries which are used
+library(knitr)
+library(dataMeta)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(stringr)
+library(psych)
+library(DMwR)
+```
+Next, the data must be read into R.
+```{r}
+# Reading in global cities data
+globalCitiesData <- read.csv(file="C:/RData/GlobalCitiesPBI.csv", header=TRUE, sep=",")
+```
+## Data Dictionary
+
+In order to get a better understanding of the data, it is smart to organize and work through each aspect of it. This is down below in the creation of a data dictionary.
+
+```{r}
+# Creating descriptions for each column
+var_desc <- c("City name", "Continent Name", "Country Name", "Area of city region in kilometers squared", "Area of metropolitan region in kilometers squared", "Population of city in millions", "Population of total metropolitan area in millions", "Annual population growth in percent", "Gross domestic product in thousands converted by purchasing power parity", "Primary form of industry in the area", "Secondary form of industry in the area", "Unemployment rate in percent of population", "Poverty rate in percentage", "Methods of public transportation", "Amount of major airports", "Amount of major sea ports", "Amount of higher education institutions", "Infant mortalities per thousand births", "Average life expectancy in years of males in the population", "Average life expectancy in years of females in the population", "Number of hospitals in the area", "Shows whether or not area has legislation against smoking", "Number of museums in the area", "Rates the air quality in the area", "Shows whether or not the area has any laws or legislative to promote energy efficiency", "Rates the area with alpha++ being the highest", "Gives the rating without extra seperations such as + or -", "Average life expectancy in years", "Flag for laws or regulations to improve energy efficiency", "Flag for anti smoking legislation", "Sorts each city with 1 being highest and 3 being lowest", "Rates each city within their sort")  # (Rodriguez, 2017)
+# Describing each variable data type
+var_type <- c(1,1,1,0,0,0,0,0,0,1,1,0,0,1,0,0,0,0,0,0,0,1,0,0,1,1,1,0,0,0,0,0) # (Rodriguez, 2017)
+# Building the dictionary
+linker <- build_linker(globalCitiesData, variable_description = var_desc, variable_type = var_type) # (Rodriguez, 2017)
+dict <- build_dict(my.data = globalCitiesData, linker = linker, option_description = NULL, 
+                   prompt_varopts = FALSE) # (Rodriguez, 2017)
+data_desc = "Data showing basic information pertaining to cities accross the globe."
+gcDictionary <- incorporate_attr(my.data = globalCitiesData, data.dictionary = dict, main_string = data_desc) # (Rodriguez, 2017)
+kable(head(dict,10), format = "html", caption = "Data dictionary for Global Cities PBI dataset") # (Rodriguez, 2017)
+```
+
+  There are some immediate questions to be asked about this dataset. It can be seen with preliminary visual inspection that the data describes several cities and their population size, region, wealth, life expectancy, etc... The first question is to check the general statistics of the data and what they can reveal. For example, are the maximum and minimum life expectancies reasonable? A maximum life expectancy of 1000 for example would be quite surprising and reveal issues with the data and vice versa. This would suggest that the data contains errors which would need to be examined. This means that it is important to check if any of the data has outliers or information which does not make sense.
+  Questions pertaining to the data itself includes investigating relationships within the data. For example, do certain cities within the same continents have vastly different life expectancies? What are the population differences between cities? What are the differences in poverty or unemployment rates? Do these have a relationship with the country or continent at all?
+The only way to obtain these answers is to first organize and clean the data, then analyze and visualize it.
+
+## Univariate Analysis
+
+### Summaries of the Data
+
+  The first step to answering these questions is to investigate individual variables of key interest to get a sense for the data. First, key information which is numerical in nature will be investigated by examining the summary statistics. Below, the  statistics and properties of the data was checked for each column.
+```{r}
+# Getting statistics for each column in the data
+describe(globalCitiesData) # (Kabacoff, 2017)
+```
+
+The results above appear to be reasonable for the most part, however, a few variables show strange behavior which can be seen further below.
+
+```{r}
+# Summarizing major ports data
+summarize(globalCitiesData, mean_port = mean(globalCitiesData$Major.Ports), st_dev_port = sd(globalCitiesData$Major.Ports), max_port=max(globalCitiesData$Major.Ports), min_port=min(globalCitiesData$Major.Ports))
+
+# Summarizing higher education institutions data
+summarize(globalCitiesData, mean_hied = mean(globalCitiesData$Higher.Education.Institutions), st_dev_hied = sd(globalCitiesData$Higher.Education.Institutions), max_hied=max(globalCitiesData$Higher.Education.Institutions), min_hied=min(globalCitiesData$Higher.Education.Institutions))
+```
+The above two values clearly contain data which has maximums very far from the mean. While this could be plausible, it could also describe issues with the data. One must ask, is it possible for a city to have 264 higher education institutions when the mean is 42? Furthermore, is it normal for a single city to have 17 ports when most only have 1?
+Both these cases show very large outliers.
+
+### Major Port Data
+
+Below, tables for the major ports per continent are created in order to determine the existence of possible outliers.
+```{r}
+# Plotting the major ports per continent with a mean and standard deviation line
+ggplot(data = globalCitiesData, mapping = aes(x = Continent, y = Major.Ports)) + geom_point(aes(colour = Continent)) + xlab("Continent") + ylab("Amount of Major Ports") + ggtitle("Amount of Major Ports per Continent")+geom_hline(aes(yintercept = mean(globalCitiesData$Major.Ports)))+geom_hline(aes(yintercept = (mean(globalCitiesData$Major.Ports)+sd(globalCitiesData$Major.Ports))),linetype="dashed")+theme(axis.text.x = element_text(angle = 90, hjust = 1)) # (Chang,2009),(Chase, 2012)
+```
+Above we can see that there are points which most definitely lie outside of the mean and standard deviation lines. This is a strong indication that these are outliers and very possibly incorrect information.
+In order to further check this, a boxplot can be made.
+```{r}
+# Box plot for the amount of major ports
+ggplot(globalCitiesData, aes(x=Continent, y=Major.Ports, group = Continent, fill=Continent)) +
+     geom_boxplot(colour="black") +
+    labs(title = "Outlier Plots of Major Ports",
+          x = "Continent",
+          y = "Amount of Major Ports")
+```
+It can be seen that several outliers exist, however, the large outlier located in Asia heavily skews the data. While many of the outliers can be explained by the existence of large portside cities, the largest outlier is difficult to come up with reasoning for.
+Removing the potential outliers may lead to clearer plots.
+```{r}
+# Replotting the data without the outliers
+ggplot(data = globalCitiesData[-which(globalCitiesData$Major.Ports>2.5),], mapping = aes(x = Continent, y = Major.Ports)) + geom_point(aes(colour = Continent)) + xlab("Continent") + ylab("Amount of Major Ports") + ggtitle("Amount of Major Ports per Continent")+geom_hline(aes(yintercept = mean(globalCitiesData$Major.Ports)))+geom_hline(aes(yintercept = (mean(globalCitiesData$Major.Ports)+sd(globalCitiesData$Major.Ports))),linetype="dashed") # (Chase, 2012), (mbq, 2011)
+```
+```{r}
+# New outlier plot
+ggplot(globalCitiesData[-which(globalCitiesData$Major.Ports>2.5),],aes(x=Continent,y=Major.Ports, group = Continent, fill=Continent)) +
+     geom_boxplot() +
+    labs(title = "Outlier Plots of Major Ports",
+          x = "Continent",
+          y = "Amount of Major Ports") # (mbq, 2011)
+```
+The above boxplot looks incredibly strange, however, visual analysis of the table shows that most cities actually only have 0, 1, or 2 ports. This means that the vast majority will then have a mean of 1 with very few outside this amount at 0 or 2. The scatter plot shows that all the data now lies within the deviation range. Therefore, despite the strange outlier plot, the results do in fact make more sense than the results which contained the outliers.
+
+### Higher Education Institutions
+
+Below, tables for the higher education institutions per continent are created in order to determine the existence of possible outliers.
+```{r}
+# PLotting higher education institutions
+ggplot(data = globalCitiesData, mapping = aes(x = Continent, y = Higher.Education.Institutions)) + geom_point(aes(colour = Continent)) + xlab("Continent") + ylab("Amount of Higher Education Institutions") + ggtitle("Amount of Higher Education Institutions per Continent")+geom_hline(aes(yintercept = mean(Higher.Education.Institutions)))+geom_hline(aes(yintercept = (mean(Higher.Education.Institutions)+sd(Higher.Education.Institutions))),linetype="dashed") # (Chase, 2012)
+```
+In order to further check for outliers, a boxplot can be made.
+```{r}
+# Plotting outliers for higher education institutions
+ggplot(globalCitiesData, aes(x=Continent, y=Higher.Education.Institutions, group = Continent, fill=Continent)) +
+     geom_boxplot(colour="black") +
+    labs(title = "Outlier Plots of Higher Education Institutions",
+          x = "Continent",
+          y = "Amount of Higher Education Institutions")
+```
+Again, there appears to be a large amount of outliers, removing them following the standard deviation line may lead to better plots.
+```{r}
+# Box plot for higher education institutions without the large outliers
+ggplot(globalCitiesData[-which(globalCitiesData$Higher.Education.Institutions>90),],aes(x=Continent,y=Higher.Education.Institutions, group = Continent, fill=Continent)) +
+     geom_boxplot() +
+    labs(title = "Outlier Plots of Higher Education Institutions",
+          x = "Continent",
+          y = "Amount of Higher Education Institutions") # (mbq, 2011)
+```
+
+This plot is clearly superior to the last, and shows data which appears to be much more accurate. The remaining outliers may plausibly explained, bivariate analysis will help in this scenario.
+
+## Bivariate Analysis
+
+Next, information will be analyzed for possible relationships. Before testing variables which appear to be challenging, examples are shown of data which has expected relationships. This helps test the validity of the data and also gain further understanding of it. From there, more difficult variables can be tested for a relationship.
+
+Of note, most variables were tested against each other wherever possible. However, not every plot or test is included in order to save space. Only examples which are good for process demonstration or which are of key interest are included.
+
+### Life Expectancy and Infant Mortality
+
+The below data analyzes the relationship between general life expectancy and infant mortality.
+
+```{r}
+# Plotting infant mortality rate versus life expectancy
+ggplot(data = globalCitiesData, mapping = aes(x = Life.Expectancy, y = Infant.Mortality..Deaths.per.1.000.Births.)) + geom_point(aes(colour = Continent)) + xlab("Life Expectancy") + ylab("Infant Mortality per 1000 Births") + ggtitle("Infant Mortality versus Life Expectancy")
+```
+It can be seen above that as life expectancy for a city increases, the infant mortality decreases. Additionally, the continents that a city is located in seem to be correlated with this. This makes sense because richer continents such as Europe, North America, and some countries within Asia would thus have a population with better access to better healthcare. In order to check this however, another plot must be made.
+```{r}
+# Plotting outliers for life expectancy and infant mortality
+ggplot(globalCitiesData, aes(x=Life.Expectancy, y=Infant.Mortality..Deaths.per.1.000.Births., group = Continent, fill=Continent)) +
+     geom_boxplot(colour="black") +
+    labs(title = "Outlier Plots of Life Expectancy versus Infant Mortality",
+          x = "Life Expectancy",
+          y = "Infant Mortality Rate")
+```
+While the plots are mostly good, it can be seen that the data for Europe has very many outliers. This can be further examined as seen below.
+```{r}
+# Plotting only data from Europe
+ggplot(globalCitiesData[-which(globalCitiesData$Continent!="Europe"),], aes(x=Life.Expectancy, y=Infant.Mortality..Deaths.per.1.000.Births.)) +
+     geom_boxplot(colour="black",fill="cornflowerblue") +
+    labs(title = "Outlier Plots of Life Expectancy versus Infant Mortality",
+          x = "Life Expectancy",
+          y = "Infant Mortality Rate") # (Mbq, 2011)
+```
+Isolating the data to Europe which had the most outliers, it can be seen that the data may be plausibly explained by the countries within Europe having different contexts rather than the data itself. Therefore, no further transformation should be done from here.
+
+### GDP and Life expectancy
+
+The following data checks for a relationship between the GDP per capita in a city versus the life expectancy within the city.
+```{r}
+ggplot(data = globalCitiesData, mapping = aes(x = GDP.Per.Capita..thousands....PPP.rates..per.resident., y =Life.Expectancy)) + geom_point(aes(colour = Continent)) + xlab("Life Expectancy") + ylab("Gross Domestic Product in Thousands")+ ggtitle("GDP versus Life Expectancy")
+```
+The data appears to possibly have outliers, so this must be checked.
+```{r}
+ggplot(globalCitiesData, aes(x=Life.Expectancy, y=GDP.Per.Capita..thousands....PPP.rates..per.resident., group = Continent,  fill=Continent)) +
+     geom_boxplot() +
+    labs(title = "Life Expectancy versus GDP of cities in each continent",
+          x = "Life Expectancy",
+          y = "GDP in Thousands")
+```
+It can be seen that small outliers do exist in Europe. From visual inspection of the data, it can be seen that Ankara in Turkey has a much smaller GDP than the rest of the cities.This appears to be reasonable, and not enough background information is known/provided to verify this, and so outliers for this relationship cannot be determined to be errors. Overall, the data does not have many outliers and those it does have can be reasonably explained, therefore it can be determined that the dataset has reasonable numbers on life expectancy and GDP.
+
+### Unemployment Rate and Poverty Rate
+
+The next relationship to be analyzed is that between unemployment and poverty. Below a plot can be seen displaying this relationship (if it exists).
+```{r}
+# Plotting Poverty Rate versus Unemployment Rate
+ggplot(data = globalCitiesData, mapping = aes(x = Unemployment.Rate, y = Poverty.Rate)) + geom_point(aes(colour = Continent)) + xlab("Poverty Rate") + ylab("Unemployment Rate") + ggtitle("Unemployment versus Poverty Rates")
+```
+The resulting plot is unclear and appears to have issues, therefore univariate analysis of the individual variables may provide further information.
+```{r}
+# Plotting only poverty rate against the row number
+ggplot(globalCitiesData, aes(x = as.numeric(row.names(globalCitiesData)), y=Poverty.Rate)) + geom_point(aes(colour = Continent)) + xlab("Row number") + ylab("Poverty Rate")+ggtitle("Poverty Rate")
+```
+```{r}
+# Plotting unemployment rate exclusively against row number
+ggplot(globalCitiesData, aes(x = as.numeric(row.names(globalCitiesData)), y=Unemployment.Rate)) + geom_point(aes(colour = Continent)) + xlab("Row number") + ylab("Umeployment Rate")+ggtitle("Unemployment Rate")
+```
+The results are strange, and so boxplots are made for each variable to check for outliers.
+```{r}
+# Plotting unemployment rate per continent
+ggplot(globalCitiesData, aes(x = Continent, y=Unemployment.Rate, group = Continent,  fill=Continent)) +
+     geom_boxplot() +
+    labs(title = "Unemployment Rate in each continent",
+          x = "Continent",
+          y = "Unemployment Rate")
+```
+The umemployment rate clearly has some issues one of the results even has 0 has an entry. This must be an error considering all areas have an umeployment rate greater than 0 (Zagorsky, 2018). Now to check poverty rate per continent.
+```{r}
+# Plotting poverty rate per continent
+ggplot(globalCitiesData, aes(x=Continent, y=Poverty.Rate, group = Continent,  fill=Continent)) +
+     geom_boxplot() +
+    labs(title = "Poverty Rate in each continent",
+          x = "Continent",
+          y = "Poverty Rate")
+```
+It is obvious that the issues that came with finding the distributions between unemployment rate and poverty rate mostly came from issues with the poverty rate. Both appear to be missing data, with poverty missing an extremely large amount. Visual inspection of the data shows that several cities are listed as having a poverty rate of 0, which is not currently true of anywhere on Earth (Zagorsky, 2018). It is important to note that the fact that this is an outlier was only identified because of background knowledge we already had on the subject. If this was not known, transformation should not be done since they could not be done in confidence.
+
+This issue will be further addressed in the data transformation section.
+
+#### Higher Education Institutions and GDP
+
+Revisiting the higher education data, we can see if there is other data which can be used to explain the amount of institutions. The following data checks for a relationship between the amount of higher education institutions versus the GDP of the city. The below plots show data which appears reasonable and does not suggest issues.
+```{r}
+# Plotting GDP versus amount of higher education institutions
+ggplot(globalCitiesData[-which(globalCitiesData$Higher.Education.Institutions>90),], mapping = aes(x = Higher.Education.Institutions, y =GDP.Per.Capita..thousands....PPP.rates..per.resident.)) + geom_point(aes(colour = Continent)) + xlab("Amount of Higher Education Institutions") + ylab("GDP in Thousands")+ ggtitle("GDP versus Amount of Higher Education Institutions") # (mbq, 2011)
+```
+An outlier plot of this data can be seen below.
+```{r}
+# Plotting outliers for GDP versus amount of higher education institutions
+ggplot(globalCitiesData[-which(globalCitiesData$Higher.Education.Institutions>90),], aes(x=Higher.Education.Institutions, y=GDP.Per.Capita..thousands....PPP.rates..per.resident., group = Continent,  fill=Continent)) +
+     geom_boxplot() +
+    labs(title = "Outlier Plot of Higher Education Institutions versus GDP",
+          x = "Amount of Higher Education Institutions",
+          y = "GDP in Thousands") # (mbq, 2011)
+```
+We can also plot higher education institutions versus metropolitan population size as another test.
+
+```{r}
+# Plotting higher education institutions and metropolitan population size
+ggplot(data = globalCitiesData, mapping = aes(x = Higher.Education.Institutions, y =Metro.Population..millions.)) + geom_point(aes(colour = Continent)) + xlab("Amount of Higher Education Institutions") + ylab("Metropolitan Population Size")+ ggtitle("Metropolitan Population Size versus Amount of Higher Education Institutions")
+```
+```{r}
+# Plotting higher education versus metropolitan population
+ggplot(globalCitiesData, aes(x=Higher.Education.Institutions, y=Metro.Population..millions., group = Continent,  fill=Continent)) +
+     geom_boxplot() +
+    labs(title = "Outlier Plot of Higher Education Institutions versus Metropolitan Population Size",
+          x = "Amount of Higher Education Institutions",
+          y = "Metropolitan Population Size")
+```
+There are numerous outliers when it comes to comparing with metropolitan size but fewer with GDP. This indicates that the GDP of a city may be a better indicator for the amount of higher education institutions in a region rather than the population size. However, both variables do not show enough of a relationship to make any absolute claims. 
+
+## Data Transformation
+
+As previously stated, there are clear issues with the dataset. Below, outliers and missing values are dealt with to ensure optimal data for analysis.
+
+### Outliers
+
+As was seen for the major ports data and amount of higher education data, when a few massive outliers are present it is often a good idea not to include them in the analysis in order to get better results. However, since our knowledge on amount of ports and higher education institutions per city is extremely limited, this data will be left in because it cannot be said for certain that they are absolutely false.
+
+### Missing Values
+
+In the questions asked above it was asked what kind of relationship poverty and unemployment rates have and also how this may change based on country or continent. In order to answer these questions it is important to have the best possible cleaned data and so the missing data may need to be dealt with.
+
+#### Poverty Rate Missing Values
+
+The largest issue with this dataset comes in the form of missing values. This can mean several things. Most likely, the number 0 was used to represent no data. It is also possible that this was due to input error. Either way, the 0 values skew the results.
+
+The first step to dealing with this is to further examine the issue.
+
+```{r}
+# Summarizing all data which has a poverty rate of 0
+summary(filter(globalCitiesData, globalCitiesData$Poverty.Rate!='0')) # (mbq, 2011)
+```
+We can see above that the 0 values do not appear to have any sort of pattern. Before continuing, it is important to note that these 0 values are only being treated as missing since it is known that poverty rates of 0 do not exist. If this were not the case, this data should not be changed or touched.
+
+Due to the fact that each row contains unique data on unique cities, it is not optimal to simply remove the data with missing values. Additionally, the data does not appear to be linearly correlated with other data points and so the correlation matrix method will not be used. Therefore, the knn nearest neighbhor method will be used.
+```{r}
+# Performing a knn Imputation on the poverty rate data
+globalCitiesData$Poverty.Rate[globalCitiesData$Poverty.Rate=="0"] <- NA # (mbq, 2011)
+globalCitiesData <- knnImputation(globalCitiesData,k=10)
+```
+To double check:
+```{r}
+# Checking results through the summary statistics
+summarize(globalCitiesData, max_PR=max(globalCitiesData$Poverty.Rate), min_hied=min(globalCitiesData$Poverty.Rate))
+```
+It can be seen that the minimum value is now 0.01, the missing values have been fixed
+
+#### Unemployment Rate Missing Values
+
+Similarily to poverty rate, unemployment rate has a single missing value. This can be resolved in the same way.
+```{r}
+# Checking the summary statistics for unemployment rate
+summarize(globalCitiesData, max_PR=max(globalCitiesData$Unemployment.Rate), min_hied=min(globalCitiesData$Unemployment.Rate)) #(mbq, 2011)
+```
+```{r}
+# Performing a knn imputation on the data
+globalCitiesData$Unemployment.Rate[globalCitiesData$Unemployment.Rate=="0"] <- NA # (mbq, 2011)
+globalCitiesData <- knnImputation(globalCitiesData,k=10)
+```
+To double check:
+```{r}
+# Checking the summary statistics for unemployment rate after the transformation
+summarize(globalCitiesData, max_PR=max(globalCitiesData$Unemployment.Rate), min_hied=min(globalCitiesData$Unemployment.Rate))
+```
+It can be seen that the minimum value is now 0.01, the missing values have been fixed.
+
+## Conclusions on Dataset
+
+Of this dataset, there are certain aspects which are to be trusted and others which are not. For example, numbers such as area, population size, population growth, etc... appear to be reasonable and possible to trust. However, it can be seen that from the univariate analysis of the amount of Major Ports in cities, there is data which is exceptional and difficult to reasonably explain. One city is a massive outlier in amount of ports and may indicate a mistake during data input. When the data was remodelled without the entries that contained the large outliers, it can be seen that the resulting plots and relationships were much more reasonable and plausible.
+Furthermore, as can be seen in the above table Unemployment versus Poverty Rates it can be seen that there are issues with data which does not make sense. For example, from visual analysis of the raw data it can be seen that San Francisco in the United states has an umeployment rate and a poverty of 0. From background knowledge we had on this subject, we knew that this was not a reasonable result and in fact that San Franciso has a very large poverty rate (Ha, 2019). In fact, any cursory research shows that an umemployment or poverty rate of 0 is almost impossible (Zagorsky,2018). Therefore, for so many cities to have such rates demonstrates issues with these data values.
+
+In conclusion, there are key relationships which are well maintained by the dataset. However, there are also clear issues with the data as well. Therefore, the data is to be trusted after some cleaning and organization.
+
+## Works Cited:
+
+Rodriguez, Dania M. "dataMeta: Making and Appending a Data Dictionary to an R Dataset". cran.r.project.org, 11th August, 2017, https://cran.r-project.org/web/packages/dataMeta/vignettes/dataMeta_Vignette.html. Accessed October 15th, 2019.
+
+Kabacoff, Robert I. "Descriptive Statistics". Datacamp, 2017. https://www.statmethods.net/stats/descriptives.html. Accessed October 15th, 2019.
+
+Chase. "R ggplot2: Labelling a horizontal line on the y axis with a numeric value" StackExchange, October 13th, 2012. https://stackoverflow.com/questions/12876501/r-ggplot2-labelling-a-horizontal-line-on-the-y-axis-with-a-numeric-value. Accessed October 16th, 2019.
+
+Mbq. "Conditionally Remove Data Frame Rows with R". StackExchange, November 4th, 2011. https://stackoverflow.com/questions/8005154/conditionally-remove-dataframe-rows-with-r. Accessed October 18th, 2019.
+
+Zagorsky, Jay L. "Why the Unemployment Rate will Never get to 0 Percent- but It Still Could Go a Lot Lower". TheConversation, September 21st, 201. https://theconversation.com/why-the-unemployment-rate-will-never-get-to-zero-percent-but-it-could-still-go-a-lot-lower-103665. Accessed October 18th, 2019.
+
+Ha, Amanda. "Total employment decreased over the month, but increased by 37,600 over the year". Employment Developement Department, October 18th, 2019. https://www.labormarketinfo.edd.ca.gov/file/lfmonth/sanf$pds.pdf. Accessed October 18th, 2019.
+
+Globalization and World Cities Research Network (GaWC). Loughborough University, 2019. https://www.lboro.ac.uk/gawc/group.html. Accessed October 15, 2019.
+
+# 2016 Collisions Final
+
+## Introduction
+
+The second dataset which will be examined is the 2016 Collisions Final Dataset. Visual inspection of the data reveals that it tracks locations and times of collisions in Ottawa during the 2016 year as well is the type of impact which occured. This data appears to come from the City of Ottawa repository of vehicle collisions within the city, however, the exact data set was not located online (City of Ottawa, 2016). It can be seen, however, that all of this data took place in the year 2016 around the City of Ottawa.
+
+First, relevant libraries must be brought in and then the data must be read.
+```{r}
+# Bringing in libraries which are used
+library(knitr)
+library(dataMeta)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(stringr)
+library(psych)
+library(lubridate)
+
+# Reading the collisions data csv file
+collisionsData <- read.csv(file="C:/RData/2016collisionsfinal.csv", header=TRUE, sep=",")
+```
+
+## Data Dictionary
+
+Next, in order to gain further understanding of every aspect of the data, a dictionary must be created.
+
+```{r}
+# Describing each column of the data
+var_descCol <- c("Record number for each entry", "Location of the collision", "X coordinate", "Y coordinate", "Date of the incident listed as mm/dd/yy", "Time of incident in military time", "Meteorlogical conditions during collision", "Type of road surface", "Traffic control system in area (such as traffic lights or signs)", "Road location of collision", "Level of light during collision", "Classification of the collision", "Type of collision which occured") # (Rodriguez, 2017)
+# Setting the variable type for each column
+var_typeCol <- c(0,1,1,1,1,1,1,1,1,1,1,1,1) # (Rodriguez, 2017)
+# Building the dictionary for collisions data
+linker <- build_linker(collisionsData, variable_description = var_descCol, variable_type = var_typeCol) # (Rodriguez, 2017)
+dictCollisions <- build_dict(my.data = collisionsData, linker = linker, option_description = NULL, 
+                   prompt_varopts = FALSE) # (Rodriguez, 2017)
+data_desc = "Data showing basic information pertaining to cities accross the globe."
+ColDictionary <- incorporate_attr(my.data = collisionsData, data.dictionary = dictCollisions, main_string = data_desc) # (Rodriguez, 2017)
+kable(head(dictCollisions,10), format = "html", caption = "Data dictionary for 2016 vehicle collisions dataset") # (Rodriguez, 2017)
+
+```
+  From a primary visual inspection of the data, it can be seen that there are a large amount of issues present. First of all, the date column contains many entries with "#######" instead of an actual date in the original file. It can be seen in the dictionary, that this data has been brought in anyways, and has actually been done so incorrectly. This is clearly an issue and must be resolved. It is important to determine whether or not more of the values have this issue. This also raises questions on the data itself. Are all of the entries valid? Are there any others which are inputted in a format which is accepted but does not make sense? 
+  Despite this, there are several questions to be asked about the data itself. The data lists types of accidents, their times, the light conditions, and the road conditions. Key results could be taken from these variables such as whether or not there are certain times or light conditions which lead to the most accidents. Furthermore, the data also lists locations for each collision, it would be important to check which locations, if any, have more accidents than others.
+
+## Univariate Analysis
+
+The first step in determining the quality of the data is to visualize and analyze it. This involves making many plots and summaries, therefore, only those of key interest are kept for the sake of brevity.
+
+### Summaries of the Data
+
+The below summary calculates the mean, standard deviation, median, etc... of all the data in the dataset. In this case, since the data is either showing a location, a time, or a category, the summary statistics have no meaning and so are not very useful for understanding the dataset.
+```{r}
+# Getting statistics for each column in the data
+describe(collisionsData) # (Kabacoff, 2017)
+```
+Therefore, the best way to gain an understanding of the data is to visualize it.
+
+### Visualizing and Understanding the Data
+
+#### Time of Collisions
+
+The first variable which will be analyzed is the time at which incidents occured. The time data must first be formatted in order to have a neatly organized plot. This is purely for visualization purposes, and so another column is created to hold the "cleaner" variables.
+
+```{r}
+# Formatting and ordering the time format into a new column which can be more easily organized in plots
+collisionsData$hm <- as.POSIXct(collisionsData$Time, format = "%H:%M") # (Ferapontov, 2015)
+collisionsData$hm <- as_datetime(collisionsData$hm) 
+head(collisionsData$hm)
+```
+Once the transformation is complete, the plot can be created.
+```{r}
+# Scatter plot for time of collisions
+ggplot(data = collisionsData, mapping = aes(x=hm, y =Record)) + geom_point(colour = "cornflowerblue") + xlab("Time of incident") + ylab("Record Number")+ ggtitle("Time at Which Collision Occured")+scale_x_datetime(date_labels = "%H:%M %p") # (Plant, 2016)
+```
+```{r}
+# Plotting the Time of collisions in a line graph
+ggplot(data = collisionsData, mapping = aes(x = hm)) + geom_freqpoly() + xlab("Time") + ylab("Record") + ggtitle("Time of Colisions")+scale_x_datetime(date_labels = "%H:%M %p") # (Plant, 2016)
+```
+The two graphs show two ways to visualize the data. The scatter plot makes it easier to see the quantity of collisions per time while the line graph makes it easier to see the maximum and minimum values. From the above graphs it can be seen that time is definitely a factor in terms of collision frequency. Note that early morning hoursbetween midnight and 6:00am have the least amount of collisions. This could be due to the fact that most people are sleeping and therefore there are fewer vehicles and people on the road. Furthermore, it can be seen that the most amount of collisions occurs in the late afternoon between 3:00pm and 6:00pm. This could be due to high traffic and people returning from work, however more analysis is required before any conclusions can be made.
+
+#### Location of Collisions
+
+Next, the street locations will be analyzed to determine if any one street is more dangerous than another
+```{r}
+# Scatter plot for locations at which collision occured
+ggplot(data = collisionsData, mapping = aes(x=Location, y =Record)) + geom_point(position="jitter",colour = "cornflowerblue") + xlab("Location of Incident") + ylab("Record Number")+ ggtitle("Locations at Which Collision Occured")
+
+```
+
+Due to the enormous amount of variable entries, the above scatter plot is impossible to read and gives very little information. Despite this however, it does reveal one important fact about location. Each location tends to have a similar amount of records attributed to it other than several central ones where a larger amount of incidents appear to have occured. A simple visual analysis of the data shows this increase in incidents occured on the Highway 417 in Ottawa, which is a large and heavily used road. Therefore, this leap in collisions has a reasonable and plausible explanation and so does not indicate potential issues with the data itself.
+
+### Distribution Visualization
+
+The next step is to visuals variables to get a sense for their behavior, this was done for all variables, however only examples will be shown below. We will begin by analyzing the distributions of some of categorical variables.
+```{r}
+# Bar graph for Environment
+ggplot(data = collisionsData) + geom_bar(aes(x = collisionsData$Environment),colour="cornflowerblue",fill="cornflowerblue") + xlab("Environment") + ylab("Record") + ggtitle("Environment for Each Collision")+theme(axis.text.x = element_text(angle = 90, hjust = 1)) # (Chang, 2009)
+```
+```{r}
+# Bar graph for Light Level
+ggplot(data = collisionsData) + geom_bar(aes(x = collisionsData$Light),colour="cornflowerblue",fill="cornflowerblue") + xlab("Light Level") + ylab("Record") + ggtitle("Light Level for Each Collision")+theme(axis.text.x = element_text(angle = 90, hjust = 1)) # (Chang, 2009)
+```
+```{r}
+# Bar graph for Light Level
+ggplot(data = collisionsData) + geom_bar(aes(x = collisionsData$Road_Surface),colour="cornflowerblue",fill="cornflowerblue") + xlab("Road Surface") + ylab("Record") + ggtitle("Road Surface for Each Collision")+theme(axis.text.x = element_text(angle = 90, hjust = 1)) # (Chang, 2009)
+```
+The above three plots demonstrate the distribution of some of the variables. The time bar plot shows data that makese sense. Most of the collisions occur during the day when there is most traffic and during the night when it is darkest and hardest to see.
+It is important to note that each of the above graphs show that many of categories have "Unknown" and "Other" data. Both of these columns indicate values which are pureposefully included but not particularily useful for inferring information via analysis. Therefore, the data which is "Unknown" could be removed if visualizing that one column, however, it is not wise to simply remove that data point entirely since it does provide other forms of information.
+
+In order to get a better understanding of the data and it's quality, bivariate analysis must be performed.
+
+## Bivariate Analysis
+
+### Time versus Light Level
+
+Using the previously analyzed variables Time and Light level, we can perform some bivariate analysis. The advantage of plotting these two specific variables it that logically, when the time is late, the light level will be low and vice versa. Therefore, this plot can serve as a check to see the validity of the data.
+```{r}
+# Plotting the Light level data versus Time
+ggplot(data = collisionsData, mapping = aes(x = hm, y = Light)) + geom_point(position="jitter",aes(colour = Light),alpha=.5) + xlab("Time") + ylab("Level of Light") + ggtitle("Light Level for each Collision Time")+scale_x_datetime(date_labels = "%H:%M %p") # (Plant, 2016)
+```
+Clearly, a scatterplot is not the best way to visualize this data. In order to get a better understanding of it an outlier plot can be made.
+```{r}
+# Outlier plot for time and light level
+ggplot(collisionsData, aes(x=Light, y=hm))+geom_boxplot()+scale_y_datetime(date_labels = "%H:%M %p")+theme(axis.text.x = element_text(angle = 90, hjust = 1)) + xlab("Level of Light") + ylab("Time") + ggtitle("Outlier Plot for Time and Level of Light") # (Plant, 2016), (Chang, 2009)
+```
+It is obvious that the data contains many outliers, particularily in the "Light" values which count as "Dark". However, this can be plausibly explained. For example, in northern climates it is dark much earlier and later during the winter seasons. Along with days of heavy clouds, the light can be considered dark. This means that since the data can be plausibly explained, it is not reasonable to transform or clean it since these outliers may not be errors.
+Additionally, notice that the "Unknown" values for light level have many outliers. This is not of concern because since the values are unknown in the first place, their distribution and such can also not be known.
+
+### Environment versus Light Level
+
+The below plot shows the relationship between light and collisions environment. Most collisions tend to occur in clear daylight with the second most appearing in clear dark.
+```{r}
+# Building a count plot for Light Level and Environment
+ggplot(data = collisionsData, mapping = aes(x = Environment, y = Light)) + geom_count(colour="cornflowerblue") + xlab("Environment") + ylab("Level of Light") + ggtitle("Light Level for each Environment")+theme(axis.text.x = element_text(angle = 90, hjust = 1)) # (Chang, 2009)
+```
+The data appears to be very reasonable. The results can again be plausibly explained. However, it is important to note that this combination shows several cases of "Unknown" and "Other" data.
+This problem can be seen again in the below plot. This plot however does not include "Unknown". The important thing about this is that "Other" means that while the impact type is known, it was decided by those who compiled the data that the data was not common enough to get it's own category. Therefore, the "Unknown" and "Other" categories were built purposefully and are not errors.
+```{r}
+# Building a count plot for collision classification and impact type
+ggplot(data = collisionsData, mapping = aes(x = Collision_Classification, y = Impact_type)) + geom_count(colour="cornflowerblue") + xlab("Collision Classification") + ylab("Impact Type") + ggtitle("Type of Impact versus the Classificaiton of the Collision")+theme(axis.text.x = element_text(angle = 90, hjust = 1)) # (Chang, 2009)
+```
+
+## Data Transformation
+
+### Dates
+
+A column of key interest, the "Date" column, has the issue that the dates used come in two different formats. Unfortunately, this means that it cannot be easily read in R until it is properly formatted. It can be seen below that R reads in the data incorrectly.
+```{r}
+# Examining the Date column as brought in by R
+head(collisionsData$Date)
+```
+As can be seen above, the dates get misorganized by year and month due to the different formats of the variables.
+Due to the fact that this issue is tedious to solve in R, it was reformatted in Excel. This was done by highlighting the Date column and using the format tool to turn all the values into a date format. Then, excel was used to find all the dashes in the columna and turn them into slashes. The corrected dates can be seen below.
+```{r}
+# Displaying the corrected date columns
+head(collisionsData$New_Date)
+```
+The dates can now be used for analysis and visualization.
+
+### Unknown Data
+
+As previously mentioned, the data contains several instances of "Unknown" data. This is the equivalent of missing data however it has been explicitly stated by whoever provided the data that the data is not known, not that some error has been made.
+Due to the fact that these values are therefore mostly useless for visualization of that variable, it may be beneficial to ignore it at risk of losing accuracy. This can be done by simply calling the dataset without the rows which contain unknown values as seen below.
+```{r}
+# Plotting the environment data without the unknown values
+ggplot(collisionsData[-which(collisionsData$Environment=="00 - Unknown"),],aes(x=Environment,y=Light))+
+     geom_count(colour="cornflowerblue") +
+    labs(title = "Plotting Light level versus known Environments",
+          x = "Environment",
+          y = "Light Levels") + theme(axis.text.x = element_text(angle = 90, hjust = 1)) # (mbq, 2011), (Chang, 2009)
+```
+As can be seen above, the values with unknown environments have been removed. This is useful especially for visualization purposes, but should be done cautiously when it comes to analysis since it does involve losing information and data values.
+
+## Conclusions on Dataset
+
+In conclusion, the dataset is mostly to be trusted.The data itself does not contain many anamalous entries and those it does contain can be plausibly explained. Additionally, issues with the data appear to mostly be formatting issues rather than validity issues. Other than the transformation of data such as the "Date" column, not much is required to change in order to perform analysis.
+
+## Works Cited:
+
+City of Ottawa. "Annual Safety Reports". City of Ottawa, 2016. https://ottawa.ca/en/parking-roads-and-travel/road-safety/annual-safety-reports#2016-ottawa-road-safety-report. Accessed October 15th, 2019. 
+
+Rodriguez, Dania M. "dataMeta: Making and Appending a Data Dictionary to an R Dataset" cran.r.project.org, 11th August, 2017, https://cran.r-project.org/web/packages/dataMeta/vignettes/dataMeta_Vignette.html. Accessed October 15th, 2019.
+
+Kabacoff, Robert I. "Descriptive Statistics". Datacamp, 2017. https://www.statmethods.net/stats/descriptives.html. Accessed October 15th, 2019.
+https://stackoverflow.com/questions/15951216/too-many-factors-on-x-axis
+
+Mbq. "Conditionally Remove Data Frame Rows with R". StackExchange, November 4th, 2011. https://stackoverflow.com/questions/8005154/conditionally-remove-dataframe-rows-with-r. Accessed October 18th, 2019.
+
+Ferapontov, Alexy. "Convert 12 Hour Character Time to 24 Hour". Stackexchange, April 23rd, 2015.https://stackoverflow.com/questions/29833538/convert-12-hour-character-time-to-24-hour. Accessed October 18th, 2019.
+
+Plant, Robert. "How to plot Time Interval only on x axis without date?" Stacexchange, March 23rd 2016. https://stackoverflow.com/questions/36172527/how-to-plot-time-interval-only-on-x-axis-without-date. Accessed October 20th, 2019.
+
+Chang, Jonathon. "Rotating and Spacing Axis Labels in ggplot2". Stackexchange, August 25th, 2009. https://stackoverflow.com/questions/1330989/rotating-and-spacing-axis-labels-in-ggplot2. Accessed October 26th, 2019.
+
+# HR Census Data Simple
+
+## Introduction
+
+The first step to understanding a new and unknown dataset is to bring it into the workspace and analyze key aspects. This preliminary examination allows us to gain better insight of what the data and its nature may be. 
+
+```{r}
+# Getting the R workspce
+getwd()
+```
+First we load the file into the R workspace.
+
+```{r}
+# Reading the file
+mydata =  read.csv(file="C:/RData/HR_2016_Census_simple.csv", header=TRUE, sep=",")
+```
+The next step is to begin the preliminary investigations.
+```{r}
+# Investigating the data
+x = str(mydata)
+```
+
+```{r}
+# Investigating the data
+dim(mydata)
+names(mydata)
+```
+As we can see our data set contains 127 observations and 105 variables. 
+```{r}
+# Checking for empty cells
+table(complete.cases(mydata))
+```
+This tells us that there is an "element" in each cell of the data set but we need to be careful, it does not impy there are no missing values in our data set. Now that we have a little bit of a feel for our data set, we can start to work on the task given in the assignment. 
+
+## Data Dictionary and Source of the Data
+
+In the first task we are ask to create a "data dictionary" to explain the different fields and variables. It also asks us find a source for the data set online.
+
+Looking at the dataset, we can immediately tell that finding a source for this data is a priority, since all of the fields in the dataset are abbreviated, which creates ambiguity as to what they are actually refering to.
+
+After researching online we were able to track down two datasets which contain seem to contain the fields. 
+"Census indicator profile, based on the 2016 Census short-form questionnaire, Canada, provinces and territories, and health regions (2017 boundaries)" and "Census indicator profile, based on the 2016 Census long-form questionnaire, Canada, provinces and territories, and health regions (2017 boundaries)" from Statistics Canada. 
+
+
+Now we proceed to make the data dictionary....
+
+...After a few hours of work we made a CSV file which contains the descrptions of (most) fields, with respect to the order of the data set we were given for the assgnment. 
+
+```{r}
+# Bringing the relevant libraries
+library(dataMeta)
+library(knitr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(corrplot)
+```
+```{r}
+# Creating the data dictionary using linker
+field_names = read.csv(file="C:/RData/description.csv", header=TRUE, sep=",")
+var_desc = (field_names$variable_description)
+var_type=replicate(105,1) 
+linker = build_linker(mydata, variable_description = var_desc, variable_type = var_type) # (Rodriguez, 2017)
+dim(linker) # (Rodriguez, 2017)
+```
+To double check the dictionary we have built we can check the description for the variables which should be a character.
+
+```{r}
+# Checking the type of the descriptions
+typeof(var_desc) # (Rodriguez, 2017)
+```
+As can be seen above, the type in integer which is incorrect which means it must be corrected. From there, the dictionary can be created again.
+```{r}
+# Fixing the description types and creating a corrected dictionary
+var_desc2 = as.character(var_desc) # (Cookbook-r, n.d.)
+typeof(var_desc2)
+
+linker = build_linker(mydata, variable_description = var_desc2, variable_type = var_type) # (Rodriguez, 2017)
+```
+
+
+```{r}
+# Finalizing and printing the dictionary for viewing
+dict = build_dict(my.data= mydata, linker=linker, option_description = NULL, 
+                   prompt_varopts = FALSE) # (Rodriguez, 2017)
+kable(head(dict,10), format = "html", caption = "HR Census Data Dictionary") # (Rodriguez, 2017)
+```
+As can be seen above, the data dictionary has been created. It contains all variables, their descriptions, and the possible values they may take.
+
+## List of Questions about the Dataset
+
+There are several questions to be asked above this dataset, especially considering the multiple issues which can be seen with a primary visual investigation.
+
+The first question is whether or not all of the variables in this important? Can we exclude certain variables becuase they are redunant? There seem to be serveral variables in the data dataset which account for the same value.
+
+Furthermore, what were the researchers whom conducted the data colllection trying to measure? There are a 105 different fields in this data set, so perhaps they may be trying to understand some complex multivariate realationship? Therefore, are there any relationships between different fields of the data? Are there any outliers in this dataset? Can these be plausibly explained or do they seem to come from errors?
+
+In order to answer these questions, several forms of investigations must be completed.
+
+## Univariate Investigation
+
+To begin, we must get a better feel for the data. It can be visually seen that the data contains a lot of missing values but it would be beneficial to check these exactly.
+
+```{r}
+# Checking for special character (i.e. NA values)
+is.special <- function(x){
+  if (is.numeric(x)) !is.finite(x) else is.na(x)
+} # (Jong, n.d.)
+
+sapply(mydata, is.special) # (Jong, n.d.)
+
+```
+The above function checks for Not Available "na" values in the dataset.
+
+By visual inspection of the dataset we can see that there are several fields which do indeed contain invalid enteries. For example, the LW_INC_ECON_FAM_RATE field in the data contains several "Div/0!". This occurs when the the divsior is 0 which is invalid. 
+
+Furthermore, there are more than just values which are considered Not Available. There are several fields that contain 0 as most of entries such as the POP_LRG_POP_CNTR field.
+
+Addtionally, at first glace the values seem to be quite spreadout.
+
+```{r}
+# Obtaining summary statistics for the variable
+summary(mydata$POP_PRIV_HHLDS_LW_INC)
+```
+we can notice that the there is quite a bit of variance in the values of this variable. Here we are using POP_PRIV_HHLDS_LW_INC variable just as one example, but there any many more variables in the dataset that have this issue.
+
+If we make a simple plot to visuvalize the values:
+```{r}
+# Plotting the variable
+plot(mydata$POP_PRIV_HHLDS_LW_INC)
+```
+Plot this column gives us even a better understanding of what is going on in particular with POP_PRIV_HHLDS_LW_INC.
+As we can notice that there is an extreme outlier in this data set which is potentially skewing the summary statistics, in particular the mean and the standard deviation.
+
+```{r}
+# Plotting the outliers for this variable
+boxplot(mydata$POP_PRIV_HHLDS_LW_INC)
+```
+The simple box plot givies us a simmilar result.
+We use the following function to calculate the outliers.
+```{r}
+# Plotting the outliers
+boxplot.stats(mydata$POP_PRIV_HHLDS_LW_INC)$out
+```
+In the above function, we are using a function provided in base R. This function uses the Tukey's box-and-whisker method for outlier detection.  In this method, an observation is an outlier when it is larger than the so-called ``whiskers'' of the set of observations. The upper whisker is computed by adding 1.5 times the interquartile range to the third quartile and rounding to the nearest lower observation. The lower whisker is computed likewise. (An introduction to data cleaning with R,2013)
+
+```{r}
+# Transforming the data into a dataframe
+df = data_frame(mydata)
+head(df)
+```
+In the above code the data has been converted into an R data frame.
+
+We can plot the outliers on the graph to perphaps gains a better understanding of what is going on with the outliers in this partcular field.
+
+Fist of if we look at description of the field: Persons in private households in low income before tax in 2015. The first data point actully  represents Canada accourding to the data. This makes seense of why the value of one partcular point is so high compared to the rest. 
+
+```{r}
+# Plotting the outliers
+plot(boxplot.stats(mydata$POP_PRIV_HHLDS_LW_INC)$out)
+```
+Here if we just plot our outliers in the Persons in private households in low income before tax in 2015 field we can notice that in our set of outliers we still have one value which is much higher than the rest of the outliers. 
+```{r}
+# Checking the minimum value
+min(boxplot.stats(mydata$POP_PRIV_HHLDS_LW_INC)$out)
+```
+Lets try to visulize the data by not including all the "outliers".
+```{r}
+# Plotting the data without outliers and checking the distribution
+ggplot(df[-which(mydata$POP_PRIV_HHLDS_LW_INC>117855),],aes(x =factor(0),y =mydata$POP_PRIV_HHLDS_LW_INC)) +
+    geom_boxplot() +
+    geom_rug() +
+   xlab("") + scale_x_discrete(breaks=NULL) # (Noamross, 2012)
+```
+```{r}
+# Plotting the data on a violin plot to further check distribution
+ggplot(df[-which(mydata$POP_PRIV_HHLDS_LW_INC>117855),],aes(x =factor(0),y =mydata$POP_PRIV_HHLDS_LW_INC), group =1) +
+    geom_violin() +
+    geom_rug() +
+   xlab("") +
+  scale_x_discrete(breaks=NULL) # (Noamross, 2012), (Datanovia, 2018)
+```
+As we can see the violin plot gives a really intutive idea of what the data in this field looks likes, Most of the data is centerend around 100,000. The first quartile is  15595 and the 3rd quantile is 49022, where as the mean is 102181. 
+
+Now we understand that this dataset contains a wide variaty of observations. We can see that one of the observation is potentially Canada as a whole while other observations are for the provinces. However, by graphing the data we can also see that a majority of the observations are from "smaller" subregions. 
+```{r}
+# PLotting data
+ggplot(df,aes(x = c(1:127),y =mydata$POP_LRG_POP_CNTR)) + geom_point()
+```
+This is an other variable in the the data set. Large urban population centre population is the description of the field which we were able to find on STATCAN. This field looks very similar to the previous field as well.
+```{r}
+# Plotting outliers for the new variable
+ggplot(df,aes(x =factor(0),y =mydata$POP_LRG_POP_CNTR), group =1) +
+    geom_boxplot() +
+    geom_rug() +
+   xlab("") +
+  scale_x_discrete(breaks=NULL) # (Noamross, 2012)
+```
+```{r}
+# Obtaining the summary statistics
+summary(mydata$POP_LRG_POP_CNTR)
+```
+List of the Outliers in this field:
+```{r}
+# Checking the outliers
+boxplot.stats(mydata$POP_LRG_POP_CNTR)$out
+```
+```{r}
+# Plotting the outliers 
+plot(boxplot.stats(mydata$POP_LRG_POP_CNTR)$out)
+```
+```{r}
+# Obtaining the minimum outlier
+min(boxplot.stats(mydata$POP_LRG_POP_CNTR)$out)
+```
+627275 is the smallest outlier in this column
+```{r}
+# Plotting the data without minimum outlier
+ggplot(df[-which(mydata$POP_LRG_POP_CNTR>627275),],aes(x =factor(0),y =mydata$POP_LRG_POP_CNTR), group =1) +
+    geom_boxplot() +
+    geom_rug() +
+   xlab("") +
+  scale_x_discrete(breaks=NULL) # (Noamross, 2012), (Datanovia, 2018)
+```
+```{r}
+# Plotting data without smallest outlier in another form for further information
+ggplot(df[-which(mydata$POP_LRG_POP_CNTR>627275),],aes(x =factor(0),y =mydata$POP_LRG_POP_CNTR), group =1) +
+    geom_violin() +
+    geom_rug() +
+   xlab("") +
+  scale_x_discrete(breaks=NULL) # (Noamross, 2012), (Datanovia, 2018)
+```
+## Bivariate Investigations
+```{r}
+# Checking a correlation plot of the data
+corrplot(cor(mydata[,4:15], use="complete.obs"),type="upper",tl.pos="d") # (Raschka, 2013)
+```
+```{r}
+# Examining the data
+mydata[,4:15]
+```
+We can see that if group together fields 4 to 15, we can observe some very strong correlations. This is because all the fields are telling us something about the population in a particualr regions, such as the size, the density, etc.. Therefore it makes sense to see heatmeat show the corrrelations. It is important to note that corrrelation measures the liner realationship between two variables. 
+
+## Red Flags and Data Transformations
+
+There are a few redflags in this dataset. First off we have 105 fields with only 127 observations.
+Furthermore, some fields in this dataset such as LRG_POP_CNTR_RATE contian a majority of values which are zeros but also contain very large values. This leads to extreamly skewed statistics which dont nessarly give us the best idea of whats going on.
+
+The data set at first glance seems to contain outliers, however, at a closer look we noticed that the outliers are just the observations of bigger regions( such as provinces and Canada as a whole).
+
+Additionnally, there are "##div/0" values in some of the fields. In this data, we are observing differet Geo Codes in canda. Naturally, there is alot of variation between them, especially if they are not the same size. Therefore, one solution might be to find values from simmilar geo codes and fill them in. However, this apprach gets more complex. How do you really pick which geo code is the "best" approximation. The selection process beccomes even harder when we realize that the geocodes differ in sizes.
+
+Overall, we do not trust the dataset. Although we were able to find the data for Canada as whole on the STATCAN website, we were not able to find the other observations in this dataset.
+
+
+## Citations
+
+Converting between Data Frames and Contingency Tables, Cookbook-r, n.d. www.cookbook-r.com/Manipulating_data/Converting_between_data_frames_and_contingency_tables/. Accessed Nov. 6, 2019.
+
+Dave. “GGPlot Colors Best Tricks You Will Love.” Datanovia, 18 Nov. 2018, www.datanovia.com/en/blog/ggplot-colors-best-tricks-you-will-love/. Accessed Nov 5. 2019.
+
+Rodriguez, Dania M. DataMeta: Making and Appending a Data Dictionary to an R Dataset, 11 Aug. 2017, cran.r-project.org/web/packages/dataMeta/vignettes/dataMeta_Vignette.html. Accessed Nov 5. 2019.
+
+“A Short Tutorial for Decent Heat Maps in R.” Dr. Sebastian Raschka, 8 Dec. 2013, sebastianraschka.com/Articles/heatmaps_in_r.html. Accessed Nov 5. 2019.
+
+Statistics Canada: Canada's National Statistical Agency / Statistique Canada : Organisme Statistique National Du Canada, www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710012201. Accessed Nov 5. 2019.
+
+Statistics Canada: Canada's National Statistical Agency / Statistique Canada : Organisme Statistique National Du Canada, www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710012301. Accessed Nov 3. 2019.
+
+Edwin de Jonge. “An Introduction to Data Cleaning with R.” Https://Cran.r-Project.org/, n.d., cran.r-project.org/doc/contrib/de_Jonge+van_der_Loo-Introduction_to_data_cleaning_with_R.pdf. Accessed Nov 2. 2019.
+
+“A Quick Introduction to Ggplot().” Noamross.net, www.noamross.net/archives/2012-10-05-ggplot-introduction/. Accessed Nov 5. 2019.
